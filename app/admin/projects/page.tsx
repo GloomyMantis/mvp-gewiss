@@ -1,0 +1,166 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
+import { Search, Filter, Calendar, Building2 } from 'lucide-react'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { Project, ProjectStatus, STATUS_LABELS } from '@/lib/types'
+
+const ALL_STATUSES: ProjectStatus[] = ['registered', 'in_quotation', 'sale_secured', 'completed', 'reward_paid']
+
+export default function AdminProjectsPage() {
+  const supabase = createClient()
+  const [projects, setProjects] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all')
+  const [pendingOnly, setPendingOnly] = useState(false)
+
+  useEffect(() => {
+    fetchProjects()
+  }, [])
+
+  const fetchProjects = async () => {
+    const { data } = await supabase
+      .from('projects')
+      .select('*, designer:users(username, company_name)')
+      .order('created_at', { ascending: false })
+    setProjects(data ?? [])
+    setLoading(false)
+  }
+
+  const filtered = projects.filter(p => {
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false
+    if (pendingOnly && !(p.status === 'completed' && !p.reward_paid)) return false
+    if (search) {
+      const q = search.toLowerCase()
+      return (
+        p.project_name?.toLowerCase().includes(q) ||
+        p.beneficiary_name?.toLowerCase().includes(q) ||
+        p.installer_name?.toLowerCase().includes(q) ||
+        p.designer?.company_name?.toLowerCase().includes(q)
+      )
+    }
+    return true
+  })
+
+  return (
+    <div className="p-8 max-w-6xl mx-auto animate-fade-in">
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900">All Projects</h1>
+        <p className="text-sm text-gray-500 mt-0.5">{filtered.length} projects</p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search projects, companies..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => { setStatusFilter('all'); setPendingOnly(false) }}
+            className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+              statusFilter === 'all' && !pendingOnly ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            All
+          </button>
+          {ALL_STATUSES.map(s => (
+            <button
+              key={s}
+              onClick={() => { setStatusFilter(s); setPendingOnly(false) }}
+              className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                statusFilter === s ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {STATUS_LABELS[s]}
+            </button>
+          ))}
+          <button
+            onClick={() => { setPendingOnly(!pendingOnly); setStatusFilter('all') }}
+            className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+              pendingOnly ? 'bg-red-600 text-white' : 'bg-white text-red-500 border border-red-200 hover:bg-red-50'
+            }`}
+          >
+            Pending Pay
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-6 h-6 border-2 border-gray-200 border-t-brand-600 rounded-full animate-spin" />
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-50">
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-5 py-3.5">Project</th>
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3.5">Designer</th>
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3.5">Beneficiary</th>
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3.5">Status</th>
+                <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-3.5">Date</th>
+                <th className="px-4 py-3.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map((project: any) => (
+                <tr key={project.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{project.project_name}</span>
+                      {project.boq_file_path && (
+                        <span className="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded font-medium">BOQ</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">{project.installer_name}</div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="text-sm text-gray-700">{project.designer?.company_name}</div>
+                    <div className="text-xs text-gray-400">@{project.designer?.username}</div>
+                  </td>
+                  <td className="px-4 py-3.5 text-sm text-gray-600">{project.beneficiary_name}</td>
+                  <td className="px-4 py-3.5">
+                    <StatusBadge status={project.status as ProjectStatus} />
+                    {project.status === 'completed' && !project.reward_paid && (
+                      <div className="text-xs text-red-500 mt-1 font-medium">⚠ Unpaid</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5 text-xs text-gray-400">
+                    {new Date(project.created_at).toLocaleDateString('ro-RO')}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <Link
+                      href={`/admin/projects/${project.id}`}
+                      className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+                    >
+                      View →
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-sm text-gray-400">
+                    No projects found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
