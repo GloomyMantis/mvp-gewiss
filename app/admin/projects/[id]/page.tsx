@@ -1,3 +1,4 @@
+export const dynamic = 'force-static'
 import ProjectDetailClient from './ProjectDetailClient'
 
 export async function generateStaticParams() {
