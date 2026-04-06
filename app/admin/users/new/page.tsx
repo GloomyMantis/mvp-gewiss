@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 'use client'
 import { useState } from 'react'
 import { UserPlus, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react'
