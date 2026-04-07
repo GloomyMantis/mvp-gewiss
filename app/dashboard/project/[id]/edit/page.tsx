@@ -1,7 +1,7 @@
 import EditClient from './EditClient'
 
 export async function generateStaticParams() {
-  return []
+  return [{ id: 'placeholder' }]
 }
 
 export default function EditProjectPage({ params }: { params: { id: string } }) {
