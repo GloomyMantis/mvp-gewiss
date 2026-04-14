@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { UserPlus, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
@@ -25,13 +26,21 @@ export default function AddDesignerPage() {
 
     try {
       const supabase = createClient()
-      const email = `${form.username.trim().toLowerCase()}@gewiss.local`
+      const email = `${form.username.trim().toLowerCase()}@gewiss.com`
 
-      // Get current admin session to restore later
+      // Save admin session
       const { data: { session: adminSession } } = await supabase.auth.getSession()
+      if (!adminSession) throw new Error('Admin session not found')
 
-      // Sign up new designer user
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      // Create a separate anonymous client for signup (won't affect admin session)
+      const anonClient = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false, storageKey: 'designer-signup-temp' } }
+      )
+
+      // Sign up new user using separate client
+      const { data: signUpData, error: signUpError } = await anonClient.auth.signUp({
         email,
         password: form.password,
       })
@@ -39,8 +48,8 @@ export default function AddDesignerPage() {
       if (signUpError) throw signUpError
       if (!signUpData.user) throw new Error('Failed to create user')
 
-      // Insert profile
-      const { error: profileError } = await supabase.from('users').insert({
+      // Insert profile using admin session (still active)
+      const { error: profileError } = await supabase.from('users').upsert({
         id: signUpData.user.id,
         username: form.username.trim().toLowerCase(),
         company_name: form.company_name.trim(),
@@ -48,14 +57,6 @@ export default function AddDesignerPage() {
       })
 
       if (profileError) throw profileError
-
-      // Restore admin session
-      if (adminSession) {
-        await supabase.auth.setSession({
-          access_token: adminSession.access_token,
-          refresh_token: adminSession.refresh_token,
-        })
-      }
 
       setSuccess(true)
       setTimeout(() => router.push('/admin/designers'), 1500)
