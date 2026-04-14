@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { ArrowLeft, FileText, Download, Pencil, X, Check, Plus, Trash2, Upload } from 'lucide-react'
@@ -33,8 +32,10 @@ function EditableField({ label, value, fieldKey, editMode, multiline, onChange }
 
 export default function ProjectDetailClient({ id }: { id: string }) {
   const supabase = createClient()
-  const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Use localStorage to get real project ID
+  const [realId, setRealId] = useState<string>(id)
   const [project, setProject] = useState<any>(null)
   const [boqFiles, setBoqFiles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,10 +49,15 @@ export default function ProjectDetailClient({ id }: { id: string }) {
   const [newFileName, setNewFileName] = useState('')
   const [showUpload, setShowUpload] = useState(false)
 
-  useEffect(() => { fetchProject() }, [id])
+  useEffect(() => {
+    const storedId = localStorage.getItem('selectedProjectId')
+    const projectId = storedId || id
+    setRealId(projectId)
+    fetchProject(projectId)
+  }, [])
 
-  const fetchProject = async () => {
-    const { data } = await supabase.from('projects').select('*, designer:users(username, company_name)').eq('id', id).single()
+  const fetchProject = async (projectId: string) => {
+    const { data } = await supabase.from('projects').select('*, designer:users(username, company_name)').eq('id', projectId).single()
     setProject(data)
     if (data) setEditFields({
       project_name: data.project_name,
@@ -60,8 +66,7 @@ export default function ProjectDetailClient({ id }: { id: string }) {
       observations: data.observations || '',
       project_value: data.project_value ? String(data.project_value) : '',
     })
-    // Fetch BOQ files
-    const { data: files } = await supabase.from('boq_files').select('*').eq('project_id', id).order('uploaded_at', { ascending: false })
+    const { data: files } = await supabase.from('boq_files').select('*').eq('project_id', projectId).order('uploaded_at', { ascending: false })
     setBoqFiles(files ?? [])
     setLoading(false)
   }
@@ -86,14 +91,19 @@ export default function ProjectDetailClient({ id }: { id: string }) {
       observations: editFields.observations.trim() || null,
       project_value: editFields.project_value ? parseFloat(editFields.project_value) : null,
       updated_at: new Date().toISOString()
-    }).eq('id', id)
-    if (!error) { setProject({ ...project, ...editFields, project_value: editFields.project_value ? parseFloat(editFields.project_value) : null }); setEditMode(false); setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 3000) }
+    }).eq('id', realId)
+    if (!error) {
+      setProject({ ...project, ...editFields, project_value: editFields.project_value ? parseFloat(editFields.project_value) : null })
+      setEditMode(false)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    }
     setSaving(false)
   }
 
   const updateStatus = async (status: ProjectStatus) => {
     setUpdating(true)
-    const { error } = await supabase.from('projects').update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('projects').update({ status, updated_at: new Date().toISOString() }).eq('id', realId)
     if (!error) setProject({ ...project, status })
     setUpdating(false)
   }
@@ -103,7 +113,7 @@ export default function ProjectDetailClient({ id }: { id: string }) {
     const newVal = !project.reward_paid
     const updates: any = { reward_paid: newVal, updated_at: new Date().toISOString() }
     if (newVal) updates.status = 'reward_paid'
-    const { error } = await supabase.from('projects').update(updates).eq('id', id)
+    const { error } = await supabase.from('projects').update(updates).eq('id', realId)
     if (!error) setProject({ ...project, reward_paid: newVal, status: newVal ? 'reward_paid' : project.status })
     setUpdating(false)
   }
@@ -121,11 +131,11 @@ export default function ProjectDetailClient({ id }: { id: string }) {
     setUploading(true)
     const { data: { user } } = await supabase.auth.getUser()
     const ext = newFile.name.split('.').pop()
-    const fileName = `${project.designer_id}/${id}/${Date.now()}.${ext}`
+    const fileName = `${project.designer_id}/${realId}/${Date.now()}.${ext}`
     const { data: uploadData, error: uploadError } = await supabase.storage.from('boq-files').upload(fileName, newFile)
     if (!uploadError && uploadData) {
       await supabase.from('boq_files').insert({
-        project_id: id,
+        project_id: realId,
         file_path: uploadData.path,
         file_name: newFile.name,
         display_name: newFileName.trim() || newFile.name,
@@ -135,7 +145,7 @@ export default function ProjectDetailClient({ id }: { id: string }) {
       setNewFile(null)
       setNewFileName('')
       setShowUpload(false)
-      fetchProject()
+      fetchProject(realId)
     }
     setUploading(false)
   }
@@ -156,9 +166,10 @@ export default function ProjectDetailClient({ id }: { id: string }) {
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <Link href="/admin/projects" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6 transition-colors">
+      <button onClick={() => window.location.href = '/admin/projects/'}
+        className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-6 transition-colors">
         <ArrowLeft className="w-4 h-4" /> All Projects
-      </Link>
+      </button>
 
       {saveSuccess && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-xl z-50">
@@ -252,7 +263,6 @@ export default function ProjectDetailClient({ id }: { id: string }) {
         <EditableField label="" value={editMode ? editFields.observations : (project.observations || 'No observations.')} fieldKey="observations" editMode={editMode} multiline onChange={(k,v) => setEditFields(p => ({...p,[k]:v}))} />
       </div>
 
-      {/* BOQ Files Section */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">BOQ Documents ({boqFiles.length})</h2>
@@ -262,7 +272,6 @@ export default function ProjectDetailClient({ id }: { id: string }) {
           </button>
         </div>
 
-        {/* Upload new file */}
         {showUpload && (
           <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-100">
             <input ref={fileInputRef} type="file" accept=".pdf,.xlsx,.xls,.doc,.docx" onChange={handleFileSelect} className="hidden" />
@@ -299,12 +308,11 @@ export default function ProjectDetailClient({ id }: { id: string }) {
           </div>
         )}
 
-        {/* File list */}
         {boqFiles.length === 0 ? (
           <div className="text-center py-6 text-sm text-gray-400">No documents uploaded yet</div>
         ) : (
           <div className="space-y-2">
-            {boqFiles.map((f, i) => (
+            {boqFiles.map((f) => (
               <div key={f.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-all">
                 <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
                   <FileText className="w-4 h-4 text-orange-600" />
