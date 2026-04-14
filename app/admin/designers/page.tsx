@@ -53,13 +53,12 @@ export default function AdminDesignersPage() {
     fetchAll()
   }
 
-  const confirmDelete = async () => {
-    setDeleting(true)
-    await supabase.from('projects').delete().eq('designer_id', deletingDesigner.id)
-    await supabase.from('users').delete().eq('id', deletingDesigner.id)
-    setDeletingDesigner(null)
-    setDeleting(false)
-    fetchAll()
+const confirmDelete = async () => {
+  setDeleting(true)
+  await supabase.rpc('delete_user_cascade', { user_id: deletingDesigner.id })
+  setDeletingDesigner(null)
+  setDeleting(false)
+  fetchAll()
   }
 
   const designerStats = designers.map(d => {
