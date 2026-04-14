@@ -55,10 +55,8 @@ export default function AdminDesignersPage() {
 
   const confirmDelete = async () => {
     setDeleting(true)
-    // Delete projects first, then user
     await supabase.from('projects').delete().eq('designer_id', deletingDesigner.id)
     await supabase.from('users').delete().eq('id', deletingDesigner.id)
-    // Also delete from auth
     setDeletingDesigner(null)
     setDeleting(false)
     fetchAll()
@@ -96,7 +94,9 @@ export default function AdminDesignersPage() {
                 {d.company_name.slice(0, 2)}
               </div>
               <div className="flex-1">
-                <div className="font-medium text-gray-900">{d.company_name}</div>
+                <a href={`/admin/projects?designer=${d.id}`} className="font-medium text-gray-900 hover:text-orange-600 transition-colors cursor-pointer">
+                  {d.company_name}
+                </a>
                 <div className="text-sm text-gray-400">@{d.username}</div>
               </div>
               <div className="flex items-center gap-6">
