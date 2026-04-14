@@ -1,5 +1,4 @@
 export type UserRole = 'designer' | 'admin'
-
 export type ProjectStatus =
   | 'registered'
   | 'in_quotation'
@@ -23,12 +22,23 @@ export interface Project {
   beneficiary_name: string
   observations: string | null
   boq_file_path: string | null
+  project_value: number | null
   status: ProjectStatus
   reward_paid: boolean
   created_at: string
   updated_at: string
-  // Joined
   designer?: UserProfile
+}
+
+export interface BOQFile {
+  id: string
+  project_id: string
+  file_path: string
+  file_name: string
+  display_name: string | null
+  file_size_bytes: number | null
+  uploaded_at: string
+  uploaded_by: string
 }
 
 export interface ProjectFile {
