@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Users, FolderOpen, TrendingUp, DollarSign, Pencil, Trash2, X, Check, AlertTriangle } from 'lucide-react'
+import { Users, FolderOpen, TrendingUp, DollarSign, Pencil, Trash2, X, Check, AlertTriangle, User } from 'lucide-react'
 
 export default function AdminDesignersPage() {
   const supabase = createClient()
@@ -10,10 +10,11 @@ export default function AdminDesignersPage() {
   const [loading, setLoading] = useState(true)
   const [editingDesigner, setEditingDesigner] = useState<any>(null)
   const [deletingDesigner, setDeletingDesigner] = useState<any>(null)
-  const [editForm, setEditForm] = useState({ username: '', company_name: '' })
+  const [editForm, setEditForm] = useState({ username: '', company_name: '', prescriber: '' })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [prescriberFilter, setPrescriberFilter] = useState<string>('all')
 
   useEffect(() => { fetchAll() }, [])
 
@@ -29,7 +30,7 @@ export default function AdminDesignersPage() {
 
   const openEdit = (d: any) => {
     setEditingDesigner(d)
-    setEditForm({ username: d.username, company_name: d.company_name })
+    setEditForm({ username: d.username, company_name: d.company_name, prescriber: d.prescriber || '' })
     setError('')
   }
 
@@ -41,36 +42,41 @@ export default function AdminDesignersPage() {
     setSaving(true)
     setError('')
     const { error: err } = await supabase.from('users')
-      .update({ username: editForm.username.trim().toLowerCase(), company_name: editForm.company_name.trim() })
+      .update({
+        username: editForm.username.trim().toLowerCase(),
+        company_name: editForm.company_name.trim(),
+        prescriber: editForm.prescriber.trim() || null,
+      })
       .eq('id', editingDesigner.id)
-    if (err) {
-      setError(err.message)
-      setSaving(false)
-      return
-    }
+    if (err) { setError(err.message); setSaving(false); return }
     setEditingDesigner(null)
     setSaving(false)
     fetchAll()
   }
 
-const confirmDelete = async () => {
-  setDeleting(true)
-  await supabase.rpc('delete_user_cascade', { user_id: deletingDesigner.id })
-  setDeletingDesigner(null)
-  setDeleting(false)
-  fetchAll()
+  const confirmDelete = async () => {
+    setDeleting(true)
+    await supabase.rpc('delete_user_cascade', { user_id: deletingDesigner.id })
+    setDeletingDesigner(null)
+    setDeleting(false)
+    fetchAll()
   }
 
-  const designerStats = designers.map(d => {
-    const dProjects = projects.filter(p => p.designer_id === d.id)
-    return {
-      ...d,
-      total: dProjects.length,
-      secured: dProjects.filter(p => ['sale_secured', 'completed', 'reward_paid'].includes(p.status)).length,
-      pendingPayment: dProjects.filter(p => p.status === 'completed' && !p.reward_paid).length,
-      paidCount: dProjects.filter(p => p.reward_paid).length,
-    }
-  })
+  // Unique prescribers for filter
+  const prescribers = Array.from(new Set(designers.map(d => d.prescriber).filter(Boolean)))
+
+  const designerStats = designers
+    .filter(d => prescriberFilter === 'all' || d.prescriber === prescriberFilter)
+    .map(d => {
+      const dProjects = projects.filter(p => p.designer_id === d.id)
+      return {
+        ...d,
+        total: dProjects.length,
+        secured: dProjects.filter(p => ['sale_secured', 'completed', 'reward_paid'].includes(p.status)).length,
+        pendingPayment: dProjects.filter(p => p.status === 'completed' && !p.reward_paid).length,
+        paidCount: dProjects.filter(p => p.reward_paid).length,
+      }
+    })
 
   if (loading) return (
     <div className="p-8 flex items-center justify-center min-h-[60vh]">
@@ -80,9 +86,29 @@ const confirmDelete = async () => {
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Designers</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{designers.length} active designers</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Designers</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{designerStats.length} designers</p>
+        </div>
+        {/* Prescriber filter */}
+        {prescribers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Prescriber:</span>
+            <div className="flex gap-1.5">
+              <button onClick={() => setPrescriberFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${prescriberFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'}`}>
+                Toți
+              </button>
+              {prescribers.map(p => (
+                <button key={p} onClick={() => setPrescriberFilter(p)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${prescriberFilter === p ? 'bg-orange-600 text-white' : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -96,7 +122,14 @@ const confirmDelete = async () => {
                 <a href={`/admin/projects?designer=${d.id}`} className="font-medium text-gray-900 hover:text-orange-600 transition-colors cursor-pointer">
                   {d.company_name}
                 </a>
-                <div className="text-sm text-gray-400">@{d.username}</div>
+                <div className="flex items-center gap-3 mt-0.5">
+                  <span className="text-sm text-gray-400">@{d.username}</span>
+                  {d.prescriber && (
+                    <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                      <User className="w-3 h-3" /> {d.prescriber}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-6">
                 <Stat label="Projects" value={d.total} icon={<FolderOpen className="w-3.5 h-3.5" />} />
@@ -120,7 +153,7 @@ const confirmDelete = async () => {
             <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
               <Users className="w-6 h-6 text-gray-300" />
             </div>
-            <p className="text-sm text-gray-400">No designers registered yet</p>
+            <p className="text-sm text-gray-400">No designers found</p>
           </div>
         )}
       </div>
@@ -147,6 +180,14 @@ const confirmDelete = async () => {
                 <input type="text" value={editForm.company_name} onChange={e => setEditForm(f => ({ ...f, company_name: e.target.value }))}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all" />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Prescriber Gewiss <span className="text-gray-400 font-normal">(opțional)</span>
+                </label>
+                <input type="text" value={editForm.prescriber} onChange={e => setEditForm(f => ({ ...f, prescriber: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all"
+                  placeholder="e.g. Ion Popescu" />
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setEditingDesigner(null)} className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-all">
@@ -161,7 +202,7 @@ const confirmDelete = async () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       {deletingDesigner && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
